@@ -27,6 +27,7 @@
       <option value="">-- Select a building --</option>
     </select>
     <button onclick="findBuilding()">Find</button>
+    <button onclick="setCustomLocation()">Set My Location Here</button>
   </div>
   <div id="errorMsg"></div>
   <div id="map"></div>
@@ -48,7 +49,15 @@
       document.getElementById("errorMsg").innerText = msg;
     }
 
-    // Get user location
+    // Allow setting manual location
+    function setCustomLocation() {
+      if (userMarker) map.removeLayer(userMarker);
+      const center = map.getCenter();
+      userMarker = L.marker(center, { draggable: true }).addTo(map).bindPopup("Custom location (drag me)").openPopup();
+      showError("Custom location set. You can drag the marker to adjust.");
+    }
+
+    // Get user location automatically
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         pos => {
@@ -58,15 +67,15 @@
         },
         err => {
           console.error("Geolocation error:", err);
-          if (err.code === 1) showError("Location access denied. Please allow GPS.");
-          else if (err.code === 2) showError("Location unavailable. Try again.");
+          if (err.code === 1) showError("Location access denied. Please allow GPS or use 'Set My Location Here'.");
+          else if (err.code === 2) showError("Location unavailable. Try again or use 'Set My Location Here'.");
           else if (err.code === 3) showError("Location request timed out.");
           else showError("Unable to fetch your location.");
         },
         { enableHighAccuracy: true }
       );
     } else {
-      showError("Geolocation is not supported by your browser.");
+      showError("Geolocation is not supported by your browser. Use 'Set My Location Here'.");
     }
 
     // Load buildings.json
@@ -141,3 +150,4 @@
   </script>
 </body>
 </html>
+

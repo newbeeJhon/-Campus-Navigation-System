@@ -7,17 +7,56 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
     body { margin: 0; font-family: Arial, sans-serif; }
-    #map { height: 90vh; width: 100%; }
+    #map { height: 100vh; width: 100%; }
     #searchBar {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
       padding: 10px;
-      display: flex;
-      gap: 10px;
-      align-items: center;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+      z-index: 1000;
+      width: 250px;
     }
     #errorMsg {
       color: red;
       font-size: 14px;
       margin-top: 5px;
+    }
+    #coordsBox {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #333;
+      background: #f9f9f9;
+      padding: 5px;
+      border-radius: 5px;
+    }
+    #addForm {
+      margin-top: 10px;
+      font-size: 14px;
+      background: #f0f0f0;
+      padding: 8px;
+      border-radius: 5px;
+    }
+    #addForm input {
+      width: 100%;
+      margin: 3px 0;
+      padding: 5px;
+      font-size: 13px;
+    }
+    #addForm button {
+      width: 100%;
+      padding: 6px;
+      margin-top: 5px;
+      background: #4caf50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #addForm button:hover {
+      background: #45a049;
     }
   </style>
 </head>
@@ -27,69 +66,45 @@
       <option value="">-- Select a building --</option>
     </select>
     <button onclick="findBuilding()">Find</button>
+    <div id="errorMsg"></div>
+    <div id="coordsBox">Click map to get coordinates</div>
+
+    <!-- Add new building form -->
+    <div id="addForm">
+      <strong>Add Building</strong><br>
+      <input type="text" id="newBuildingName" placeholder="Building Name" />
+      <input type="text" id="newBuildingX" placeholder="X coordinate" />
+      <input type="text" id="newBuildingY" placeholder="Y coordinate" />
+      <button onclick="addBuilding()">Add</button>
+    </div>
   </div>
-  <div id="errorMsg"></div>
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    const map = L.map('map').setView([14.5995, 120.9842], 17); // default Manila
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+    // Map with simple CRS (pixel coordinates)
+    const map = L.map('map', {
+      crs: L.CRS.Simple,
+      minZoom: -1
+    });
 
-    let userMarker;
-    let routeLayer;
-    let buildings = {};
+    // Replace with your campus image
+    const imageUrl = 'campus_map.png';
+    const imageBounds = [[0,0], [1000,1000]]; 
+    L.imageOverlay(imageUrl, imageBounds).addTo(map);
+    map.fitBounds(imageBounds);
+
+    let buildings = {
+      "Library": { x: 200, y: 300 },
+      "Canteen": { x: 700, y: 400 },
+      "Gym": { x: 500, y: 800 }
+    };
+
     let buildingMarkers = [];
 
-    // Show error messages on screen
-    function showError(msg) {
-      document.getElementById("errorMsg").innerText = msg;
-    }
-
-    // Get user location
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        pos => {
-          const { latitude, longitude } = pos.coords;
-          userMarker = L.marker([latitude, longitude]).addTo(map).bindPopup("You are here").openPopup();
-          map.setView([latitude, longitude], 18);
-        },
-        err => {
-          console.error("Geolocation error:", err);
-          if (err.code === 1) showError("Location access denied. Please allow GPS.");
-          else if (err.code === 2) showError("Location unavailable. Try again.");
-          else if (err.code === 3) showError("Location request timed out.");
-          else showError("Unable to fetch your location.");
-        },
-        { enableHighAccuracy: true }
-      );
-    } else {
-      showError("Geolocation is not supported by your browser.");
-    }
-
-    // Load buildings.json
-    fetch("buildings.json")
-      .then(res => res.json())
-      .then(data => {
-        buildings = data;
-        populateDropdown();
-        showAllBuildingMarkers();
-      })
-      .catch(() => {
-        buildings = {
-          "Library": { lat: 14.5995, lng: 120.9842 },
-          "Canteen": { lat: 14.6000, lng: 120.9850 }
-        };
-        populateDropdown();
-        showAllBuildingMarkers();
-        showError("Could not load buildings.json, using demo data.");
-      });
-
-    // Populate dropdown with buildings
     function populateDropdown() {
       const select = document.getElementById("buildingSelect");
+      select.innerHTML = '<option value="">-- Select a building --</option>';
       Object.keys(buildings).forEach(name => {
         const opt = document.createElement("option");
         opt.value = name;
@@ -98,13 +113,14 @@
       });
     }
 
-    // Show markers for all buildings
     function showAllBuildingMarkers() {
       buildingMarkers.forEach(m => map.removeLayer(m));
       buildingMarkers = [];
 
       Object.entries(buildings).forEach(([name, coords]) => {
-        const marker = L.marker([coords.lat, coords.lng]).addTo(map).bindPopup(name);
+        const marker = L.marker([coords.y, coords.x])
+          .addTo(map)
+          .bindPopup(name);
         buildingMarkers.push(marker);
       });
     }
@@ -112,32 +128,53 @@
     function findBuilding() {
       const query = document.getElementById("buildingSelect").value;
       if (!query || !buildings[query]) {
-        showError("Building not found. Try another.");
+        document.getElementById("errorMsg").innerText = "Building not found.";
+        return;
+      }
+      document.getElementById("errorMsg").innerText = "";
+      const { x, y } = buildings[query];
+      map.setView([y, x], 0);
+    }
+
+    // Add building via form
+    function addBuilding() {
+      const name = document.getElementById("newBuildingName").value.trim();
+      const x = parseInt(document.getElementById("newBuildingX").value.trim());
+      const y = parseInt(document.getElementById("newBuildingY").value.trim());
+
+      if (!name || isNaN(x) || isNaN(y)) {
+        alert("Please enter valid name and coordinates.");
         return;
       }
 
-      const { lat, lng } = buildings[query];
-      map.setView([lat, lng], 18);
+      // Add to buildings object
+      buildings[name] = { x, y };
 
-      // Draw route if user location is known
-      if (userMarker) {
-        const userLatLng = userMarker.getLatLng();
-        if (routeLayer) map.removeLayer(routeLayer);
+      // Update dropdown + markers
+      populateDropdown();
+      showAllBuildingMarkers();
 
-        fetch(`https://router.project-osrm.org/route/v1/walking/${userLatLng.lng},${userLatLng.lat};${lng},${lat}?overview=full&geometries=geojson`)
-          .then(res => res.json())
-          .then(data => {
-            if (data.routes.length) {
-              routeLayer = L.geoJSON(data.routes[0].geometry).addTo(map);
-            } else {
-              showError("No walking route found.");
-            }
-          })
-          .catch(() => showError("Error fetching route."));
-      } else {
-        showError("User location not available, cannot draw route.");
-      }
+      // Reset form
+      document.getElementById("newBuildingName").value = "";
+      document.getElementById("newBuildingX").value = "";
+      document.getElementById("newBuildingY").value = "";
+
+      alert(`Added building: ${name}`);
     }
+
+    // Click to get coordinates
+    map.on('click', function(e) {
+      const coordsBox = document.getElementById("coordsBox");
+      const x = e.latlng.lng.toFixed(0);
+      const y = e.latlng.lat.toFixed(0);
+      coordsBox.innerText = `Clicked: { x: ${x}, y: ${y} }`;
+      L.marker([y, x]).addTo(map).bindPopup(`x:${x}, y:${y}`).openPopup();
+    });
+
+    // Init
+    populateDropdown();
+    showAllBuildingMarkers();
   </script>
 </body>
 </html>
+
